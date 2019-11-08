@@ -1,0 +1,539 @@
+---
+title: "HW3_TS_KatieBaerveldt"
+author: "Katie B"
+date: "9/25/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# 7. Consider wmurders, the number of women murdered each year (per 100,000 standard population) in the United States.
+
+*a. By studying appropriate graphs of the series in R, find an appropriate ARIMA( p,d,q ) model for these data.*
+
+Overview of data and library setup:
+```{r}
+
+library(tseries)
+library(forecast)
+library(zoo)
+library(fBasics)
+library(ggplot2)
+library(moments)
+library(fpp2)
+library(seasonal)
+library(urca)
+library(stats)
+library(data.table)
+
+?wmurders 
+```
+Standard ts graphs and EDA:
+```{r}
+autoplot(wmurders)
+basicStats(wmurders)
+```
+If the data had stopped earlier than the mid-90s, I would have surely said that there was obvious trend, however from the basic plot alone it's not as easily discernable. Seasonality is more difficult to pinpoint, if it exists in the data, because the data is collected annually and I suspect that the nature of murder may not operate on a seasonal basis but rather cyclical, if at all. A cyclical event, or a shock, would potentially explain the decline in female murders in the mid-70s, mid-80s and the sharp fall in the mid-90s. 
+
+I'm not convinced this is stationary by itself, so I will try some basic transformations first as we did in Class 5.
+
+(1) Log & (2) Box Cox:
+
+```{r}
+murder.log <- log(wmurders)
+autoplot(murder.log) 
+
+murder.BC <- BoxCox(wmurders, lambda="auto")
+autoplot(murder.BC)
+```
+Some difference but not much. Now I'll look at the QQ plot and skewness as well as kurtosis:`
+```{r}
+qqnorm(wmurders) 
+qqline(wmurders, col = 2) 
+skewness(wmurders) 
+kurtosis(wmurders)
+```
+The negative skewness suggests that my distribution is not very normal, and by looking at the tails on the QQ plot it does seem to confirm that my distribution isn't very even. Since I'm still suspicious that my data isn't stationary, I will now try testing different stabilization methods and testing the models.
+
+First, I'll try first-order differencing my ts and compare alongside the original series:
+```{r}
+autoplot(wmurders)
+murder.firstdiff <- diff(wmurders)
+autoplot(murder.firstdiff)
+```
+```{r}
+acf(murder.firstdiff)
+Box.test(murder.firstdiff,lag=10,type='Ljung')
+
+```
+H0: p > 0.05; normal distribution, stationary
+H1: p < 0.05; irregular distribution, non-stationary
+
+There are only two significant lags in the ACF plot and the p value is 0.226, so I don't feel the need to perform second-order differencing. Since I have a value I feel is stationary, I'm going to perform more testing to double check if it's good to go:
+```{r}
+
+summary(ur.kpss(murder.firstdiff))
+```
+This is conflicting, because my test statistic is only smaller than two of my critical values. According to my KPSS unit root test, this may not be fully stationary. Now I'll try and see if I should go forward with second-order differencing:
+```{r}
+ndiffs(wmurders, alpha = 0.05)
+ndiffs(murder.firstdiff, alpha = 0.05)
+```
+Confirmed, I'll do second-order differencing and run another unit test:
+```{r}
+murder.seconddiff <- diff(murder.firstdiff)
+autoplot(murder.firstdiff)
+autoplot(murder.seconddiff)
+```
+```{r}
+acf(murder.seconddiff)
+Box.test(murder.seconddiff,lag=10,type='Ljung')
+summary(ur.kpss(murder.seconddiff))
+```
+Now, my ACF/Box test is telling me to reject the null hypothesis, but my unit root test is telling me that I should move forward with the second order difference. Because the data series looks more stationary with the second order rather than first, I will move forward with murder.seconddiff.
+
+Before I can determine how I want to form my ARIMA model, I still need to determine my AR and MA factors. I'll start with AR:
+```{r}
+library(stats) # code would not run unless I reinstated the stats package here
+murder.lag <- lag(murder.seconddiff, k=1)
+head(wmurders, 12)
+head(murder.lag,12)
+
+murder_AR <- lm(murder.seconddiff~murder.lag)
+summary(murder_AR)
+
+plot(murder_AR$fitted.values, type="l")
+```
+Moving Avg component:
+```{r}
+forecast.errors <- murder_AR$residuals
+
+murder.MA <- lm(murder.seconddiff~forecast.errors)
+summary(murder.MA)
+#plotting doesn't work here since this is lm and not ts
+
+```
+Forming the ARIMA model:
+
+p = number of lagged observations used in the autoregressive model    
+d = number of differences performed to make a time series stationary  
+q = number of lagged forecast errors used in a moving average model  (determine from acf lags that are significant)
+
+Based on what I've done so far, I will make my initial ARIMA model with p = 1, d = 2, and q = 0
+
+
+
+*b. Should you include a constant in the model? Explain.*
+
+Interpreting this as "should I keep one of my ARIMA variables the same throughout testing?", I would assert that it depends on your data and the degree of work already done on the model. If I was certain that my p,d, or q value was to be kept strictly at a specific value, I would argue yes. However, given the nature of testing a manual ARIMA model and in this case, I would say no to always having a constant value because this is a black box model and I want to perform as much manipulation as possible. If anything, I would test my d variable through modeling and with the ndiffs functions first since you would typically not move past second order differencing. Then, I would keep that as my constant.
+
+
+
+
+*c. Write this model in terms of the backshift operator.*
+
+(1−ϕ1B−⋯−ϕB)(1−B)2yt = c+(1+θ1B+⋯+θ0)εt
+
+
+
+
+*d. Fit the model using R and examine the residuals. Is the model satisfactory?*
+```{r}
+
+```
+```{r}
+checkresiduals(fit)
+```
+It isn't a bad model, and my AIC seems low, but I do notice my ACF plot is showing some trend and that my residual histrogram is distributing a little unevenly. The peaks and valleys between my lags could be less extreme as well, so I will play around with my ARIMA to see where I can alter the model.
+```{r}
+fit2 <- Arima(wmurders, order=c(2,2,0)) #adjusting AR by 1 lag while keeping the rest constant
+fit2
+checkresiduals(fit2)
+
+fit3 <- Arima(wmurders, order=c(1,1,0)) #only first-order differencing
+fit3
+checkresiduals(fit3)
+
+fit4 <- Arima(wmurders, order=c(1,2,1)) #adding the MA component
+fit4
+checkresiduals(fit4)
+```
+```{r}
+acf(wmurders )
+pacf(wmurders )
+```
+```{r}
+
+fit5 <- Arima(wmurders, order=c(1,2,9)) #adjusting based on results from acf and pacf
+fit5
+checkresiduals(fit5)
+
+```
+After additional testing, I think I will move forward with fit5 which accounts for the lags from the ACF/PACF in regard to setting my p and q values. My residual histogram seems even, albeit with two symmetrical outliers, and all lags fall within the new ACF plot. The AICC is close to 9, and my p value is well above 0.5. 
+
+
+
+*e.&f. Forecast three times ahead*
+```{r}
+autoplot(forecast(fit5), h=36)
+```
+*g. Does auto.arima() give the same model you have chosen? If not, which model do you think is better?*
+```{r}
+library(tidyverse)
+library(xts)
+
+fit.auto <- auto.arima(wmurders, seasonal=FALSE)
+
+fit.auto
+autoplot(forecast(fit.auto), h=36)
+```
+The auto.arima() chose the model that I almost chose, with a MA component (1,2,1), which correlates with my previous ACF/PACF results. The AICC of of my original model is closer to 0 than this one, so I would be more comfortable using the original (1,2,9).
+
+
+
+# 9. For the usgdp series: 
+
+*a. If necessary, find a suitable Box-Cox transformation for the data;*
+```{r}
+
+?usgdp
+
+autoplot(usgdp)
+
+plot(decompose(usgdp)) #additive
+
+usgdp %>% decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative Decomposition of Quarterly US GDP 1947-2006")
+
+```
+```{r}
+usgdp.BC <- BoxCox(usgdp, lambda="auto")
+autoplot(usgdp.BC)
+
+```
+The BC transformation does not get rid of overall trend or seasonality, but it did seem to diminish the exponential component of the data. I've chosen to use this instead of the original ts data moving forward:
+
+
+
+*b. Fit a suitable ARIMA model to the transformed data using auto.arima()*
+
+This series has seasonality, which will affect how I move forward with creating an ARIMA model.I will first look at the ACF and PACF plots side by side: 
+```{r}
+
+ggAcf(usgdp.BC)
+ggPacf(usgdp.BC)
+```
+I have a suspicion that an effective ARIMA model will have more focus on MA than AR looking at these results. The ACF shows all 24 lags as having significance, but the PACF only shows one significant lag. I'll try some visibility into differencing before I try my first fit for ARIMA:
+```{r}
+
+ndiffs(usgdp.BC, alpha = 0.05)
+```
+```{r}
+
+fit0.usgdp <- auto.arima(usgdp.BC, seasonal=TRUE)
+
+fit0.usgdp
+
+```
+It looks like auto.arima() chose (2,1,0) with drift. I'm curious where it determined the AR lags to use and why it didn't use anything for MA, but since it's a black box model I have no definitive way of knowing.
+
+
+
+*c. Try some other plausible models by experimenting with the orders chosen*
+
+Seasonal ARIMA fit testing:
+```{r}
+fit1.usgdp <- Arima(usgdp.BC, order=c(3,1,0), seasonal=c(3,1,0)) #AR focused
+fit2.usgdp <- Arima(usgdp.BC, order=c(0,1,1), seasonal=c(0,1,1)) #MA focused
+fit3.usgdp <- Arima(usgdp.BC, order=c(0,2,0), seasonal=c(0,2,0)) #Diff focused
+
+fit1.usgdp
+fit2.usgdp
+fit3.usgdp
+```
+Clearly we won't be using second-order differencing in our ARIMA model. My AR and MA models both had an AIC closer to 0 than the auto.arima() fit. I'm curious what will happen if I combine my AR and MA elements:
+```{r}
+
+fit4.usgdp <- Arima(usgdp.BC, order=c(3,1,1), seasonal=c(3,1,1))
+fit4.usgdp
+```
+It seems like it's best to leave MA out of my ARIMA.
+
+
+
+*d. choose what you think is the best model and check the residual diagnostics;*
+
+Now I'll compare my auto.arima() alongside my fit1:
+```{r}
+fit0.usgdp
+fit1.usgdp
+checkresiduals(fit0.usgdp)
+checkresiduals(fit1.usgdp)
+```
+It appears that my manual chosen fit has an AICC closer to 0 than the auto model, and only has one significant lag on its ACF plot. However, the auto model performed with a higher p value and appears to also only have one significant lag on its ACF plot. After deliberating, I have chosen to move forward with my model because it has an overall more even residual distribution.
+
+
+
+*e. Produce forecasts of your fitted model. Do the forecasts look reasonable?*
+```{r}
+
+usgdp_data <- window(usgdp.BC, start = 1996)
+fit1.usgdp <- Arima(usgdp.BC, order=c(3,1,0), seasonal=c(3,1,0))
+autoplot(forecast(usgdp_data), h=40, ylab = "Quarterly US GDP 1996-2016") #next 10 years
+```
+*f. Compare the results with what you would obtain using ets() (with no transformation).*
+```{r}
+
+usgdp_data_notrans <- window(usgdp, start = 1996)
+fit_mult_usgdp <- ets(usgdp_data_notrans, model = "MNN")
+plot(forecast(fit_mult_usgdp, h=40), ylab="Quarterly US GDP 1996-2016")
+summary(fit_mult_usgdp)
+```
+It's clear that my seasonal ARIMA model has gone more in depth with a more tuned line of fit in the forecast, and narrower windor of confidence.
+
+
+
+# 10. Consider austourists, the quarterly number of international tourists to Australia for the period 1999–2010.
+
+
+*a. Describe the time plot.*
+```{r}
+
+?austourists
+
+autoplot(austourists)
+
+austourists %>% decompose(type="multiplicative") %>% #
+  autoplot() + xlab("Time") +
+  ggtitle("Classical Multiplicative Decomposition of Quarterly Visitor Nights (millions) spent by Int'l Tourists")
+```
+Seasonality and trend can be clearly seen from the raw data, so I chose a multiplicative decomposition approach. 
+```{r}
+ggseasonplot(austourists, year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("Quarterly Visitor Nights (millions) spent by Int'l Tourists") +
+  ggtitle("Seasonal plot")
+```
+Year over year, international visits seem to be lowest in the summer and steadily rise until the holidays, and sharply decline at the beginning of each year.
+
+
+
+*b. What can you learn from the ACF graph?*
+```{r}
+
+acf(austourists)
+```
+There is serial autocorrelation and clear seasonality between lags in the data, so further data transformations will need to take place if we want something stationary for forecasting.
+
+
+
+*c. What can you learn from the PACF graph?*
+```{r}
+
+pacf(austourists)
+```
+There are only 5 significant lags in my PACF plot. The correlation of the residuals of my lags seem to only have significants in the first two seasons of my data. 
+
+
+
+*d. Produce plots of the seasonally differenced data (1−B4)Yt. What model do these graphs suggest?*
+```{r}
+
+autoplot(austourists)
+
+austourists.log <- log(austourists) 
+autoplot(austourists.log)
+
+austourists.log.seasdiff <- diff(austourists.log, 4)
+autoplot(austourists.log.seasdiff)
+
+# Testing to see effectiveness of model
+acf(austourists.log.seasdiff)
+pacf(austourists.log.seasdiff)
+Box.test(austourists.log.seasdiff,lag=4,type='Ljung')
+```
+This suggests that we were able to make the data more stationary, but we're not quite where we need to be just yet when evaluating the ACF and box test. I've decided to perform differencing:
+```{r}
+ndiffs(austourists.log.seasdiff)
+
+austourists.firstdiff <- diff(austourists.log.seasdiff)
+autoplot(austourists.firstdiff)
+acf(austourists.firstdiff)
+Box.test(austourists.firstdiff,lag=4,type='Ljung')
+
+```
+My ndiffs function confirms what I found by manually performing differencing - it doesn't seem to help stabalize the data. Now that I have a constant, 0, for my difference variable, I will test some ARIMA fits:
+```{r}
+
+fit1.austourists <- Arima(austourists.log.seasdiff, order=c(1,0,0), seasonal=c(1,0,0)) #AR focused
+fit2.austourists <- Arima(austourists.log.seasdiff, order=c(0,0,1), seasonal=c(0,0,1)) #MA focused
+
+fit1.austourists
+fit2.austourists
+```
+```{r}
+fit3.austourists <- Arima(austourists.log.seasdiff, order=c(0,0,2), seasonal=c(0,0,2))
+fit4.austourists <- Arima(austourists.log.seasdiff, order=c(0,0,5), seasonal=c(0,0,5))
+
+fit3.austourists
+fit4.austourists
+```
+My ARIMA (0,0,5) with seasonal differencing seems to have the AIC closest to 0, so I will compare this to auto.arima().
+
+
+
+*e. Does auto.arima() give the same model that you chose? If not, which model do you think is better?*
+```{r}
+fit0.austourists <- auto.arima(austourists.log.seasdiff, seasonal=TRUE)
+
+fit0.austourists
+```
+```{r}
+
+checkresiduals(fit0.austourists)
+checkresiduals(fit4.austourists)
+```
+Auto.arima() chose a more complicated model with a slightly worse AIC, but both seem like they are purely white noise. If I had to choose between the two, I would move forward with my fit4 MA model.
+
+
+
+*f. Write the model in terms of the backshift operator, then without using the backshift operator.*
+
+(1−ϕ1B) (1−Φ1B4)(1−B)(1−B4)yt=(1+θ1B) (1+Θ1B4)εt
+
+# 11. Consider usmelec, the total net generation of electricity (in billion kilowatt hours) by the U.S. electric industry (monthly for the period January 1973 – June 2013). In general there are two peaks per year: in mid-summer and mid-winter. 
+
+*a. Examine the 12-month moving average of this series to see what kind of trend is involved.*
+```{r}
+?usmelec
+
+ggseasonplot(usmelec, year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("Electricity monthly total net generation. January 1973 - June 2013") +
+  ggtitle("Seasonal plot")
+
+ma(usmelec, order=12)
+
+autoplot(usmelec, series="Data") +
+  autolayer(ma(usmelec, 12), series="12-MA") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Total net generation of electricity (in billion kilowatt hours)") +
+  scale_colour_manual(values=c("Data"="grey","12-MA"="red"),
+                      breaks=c("Data","12-MA"))
+```
+There is definite upward trend, and I suspect seasonality as well when looking at the raw data over time, as confirmed by the ggseasonplot. Seasonality is also warping to have a sharper climb in the summer months, likely due to increased need for A/C in hotter summers. Because there is trend, the data will need transforming in order to achieve a stationary series. I'll first try taking the log, BC transformation, and then first-order differencing:
+```{r}
+autoplot(usmelec)
+
+usmelec.log<- log(usmelec) 
+autoplot(usmelec.log)
+
+usmelec.BC <- BoxCox(usmelec, lambda="auto")
+autoplot(usmelec.BC)
+```
+```{r}
+qqnorm(usmelec) 
+qqline(usmelec, col = 2) 
+skewness(usmelec) 
+kurtosis(usmelec)
+
+qqnorm(usmelec.log) 
+qqline(usmelec.log, col = 2) 
+skewness(usmelec.log) 
+kurtosis(usmelec.log)
+
+qqnorm(usmelec.BC) 
+qqline(usmelec.BC, col = 2) 
+skewness(usmelec.BC) 
+kurtosis(usmelec.BC)
+```
+The QQ plots show me that doing the log or BC transformation will only give me negative skewness values, which means that the distribution is not any more even. I will just try to seasonally difference the data from the original ts:
+```{r}
+
+usmelec.seasdiff <- diff(usmelec, 4)
+autoplot(usmelec.seasdiff)
+acf(usmelec.seasdiff)
+pacf(usmelec.seasdiff)
+Box.test(usmelec.seasdiff)
+
+```
+
+```{r}
+
+usmelec.firstdiff <- diff(usmelec.seasdiff)
+autoplot(usmelec.firstdiff)
+
+ndiffs(usmelec, alpha = 0.05) #advises to keep d constant at first order
+```
+```{r}
+acf(usmelec.firstdiff)
+pacf(usmelec.firstdiff)
+Box.test(usmelec.firstdiff)
+summary(ur.kpss(usmelec.firstdiff))
+```
+*c. Are the data stationary? If not, find an appropriate differencing which yields stationary data.*
+
+p = 4-12 significant lags on PACF
+d = 1
+q = 10-28 significant lags on ACF
+
+*d. Identify a couple of ARIMA models that might be useful in describing the time series. Which of your models is the best according to their AIC values?*
+```{r}
+
+fit1.usmelec <- Arima(usmelec.firstdiff, order=c(4,1,0), seasonal=c(4,1,0))
+fit2.usmelec <- Arima(usmelec.firstdiff, order=c(0,1,10), seasonal=c(0,1,10))
+
+fit1.usmelec
+fit2.usmelec
+```
+The AICC for both is extremely high, so I'm going to disregard my ACF and PACF lags and try some simpler values before I do auto.arima():
+```{r}
+
+fit3.usmelec <- Arima(usmelec.firstdiff, order=c(1,1,0), seasonal=c(1,1,0))
+fit4.usmelec <- Arima(usmelec.firstdiff, order=c(0,1,1), seasonal=c(0,1,1))
+
+fit3.usmelec
+fit4.usmelec
+```
+This isn't stationary enough to build a fit from, so I'm going to attempt rebuilding from an alternate class example:
+```{r}
+usmelec %>% diff(lag=4) %>% diff() %>% ggtsdisplay()
+
+usmelec.sd.fd <- euretail %>% diff(lag=4) %>% diff() 
+
+ndiffs(usmelec.sd.fd) 
+```
+Let's try one more manual arima:
+```{r}
+
+fit5.usmelec <- Arima(usmelec.sd.fd, order=c(6,0,3), seasonal=c(6,0,3))
+fit5.usmelec
+```
+This is extraordinarily better than the first method I tried, so I will test this data with the auto function.
+```{r}
+
+fit0.usmelec <- auto.arima(usmelec.sd.fd, seasonal=TRUE)
+
+fit0.usmelec 
+```
+*e. Estimate the parameters of your best model and do diagnostic testing on the residuals. Do the residuals resemble white noise? If not, try to find another ARIMA model which fits better.*
+```{r}
+checkresiduals(fit5.usmelec)
+checkresiduals(fit0.usmelec)
+```
+The auto model (2,0,0)(0,0,4) [4] AICC 69.38 outperformed my manual model (6,0,3)(6,0,3)[4] AICC 106.2. Since this appears to resemble white noise, I will move forward by using fit0.
+
+
+
+*f. Forecast the next 15 years of electricity generation by the U.S. electric industry. Get the latest figures from the EIA to check the accuracy of your forecasts.*
+```{r}
+
+autoplot(forecast(fit0.usmelec), start=1988, h=180)
+```
+December 2018 marked 337 kWh in net generation, which is a slight fall from the last few recorded values in our data. My forecast anticipates stagnation with room for slight decline; while it seems my model is going in the right direction, I would still want to heavily tune it further. 
+
+
+
+*g. Eventually, the prediction intervals are so wide that the forecasts are not particularly useful. How many years of forecasts do you think are sufficiently accurate to be usable?*
+
+For this example specifically, I personally would not go further than a decade in the future, and would even feel more comfortable within the five year range. Because this is monthly data, and seasonality is also increasing along with trend, I would be hesitant to build a long forecast.

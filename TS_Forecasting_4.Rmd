@@ -1,0 +1,303 @@
+---
+title: "HW4_TS_KatieBaerveldt"
+author: "Katie B"
+date: "10/4/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# 6. The gasoline series consists of weekly data for supplies of US finished motor gasoline product, from 2 February 1991 to 20 January 2017. The units are in “million barrels per day”. Consider only the data to the end of 2004.
+
+Some EDA and package loading:
+```{r}
+
+library(fpp2)
+library(GGally)
+library(ggplot2)
+
+autoplot(gasoline)
+```
+
+```{r}
+
+?gasoline
+
+gasoline.data <- ts(gasoline, start=1991, end = 2004, frequency=52) #Borrowed from class discussion
+
+autoplot(gasoline.data)
+gasoline.data %>% decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative Decomposition of Weekly US Finished Motor Gas Product Supplied 1991-2017")
+```
+It appears that product supplied is highest in the summer months, and lowest at the very beginning of the year. The data is trending upward overall with a slight plateau toward the end of the series. I also suspect that there is a cyclical component in this series due to the nature of the subject being gasoline sales.
+
+
+### *a. Fit a harmonic regression with trend to the data. Experiment with changing the number Fourier terms. Plot the observed gasoline and fitted values and comment on what you see.* 
+
+Since this series has long seasonal periods, it makes sense to use harmonic regression:
+```{r}
+
+fourier.gasoline.k2 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=2)) 
+#when I tested this on my window data, the adjusted R squared actually went down
+summary(fourier.gasoline.k2)
+```
+My Adjusted R squared is 0.7991, so I'm going to attempt running a few different k values to see how many sin/cosine pairs seem optimal:
+```{r}
+
+fourier.gasoline.k3 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=3)) 
+summary(fourier.gasoline.k3)
+
+fourier.gasoline.k4 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=4)) 
+summary(fourier.gasoline.k4)
+
+fourier.gasoline.k5 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=5)) 
+summary(fourier.gasoline.k5)
+
+fourier.gasoline.k6 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=6)) 
+summary(fourier.gasoline.k6)
+
+fourier.gasoline.k7 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=7)) 
+summary(fourier.gasoline.k7)
+
+fourier.gasoline.k8 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=8)) 
+summary(fourier.gasoline.k8)
+
+fourier.gasoline.k9 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=9)) 
+summary(fourier.gasoline.k9)
+
+fourier.gasoline.k10 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=10)) 
+summary(fourier.gasoline.k10)
+
+fourier.gasoline.k11 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=11)) 
+summary(fourier.gasoline.k11)
+
+fourier.gasoline.k12 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=12)) 
+summary(fourier.gasoline.k12)
+
+fourier.gasoline.k13 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=13)) 
+summary(fourier.gasoline.k13)
+```
+I'm going to continue testing until I reach the maximum amount of terms (m/2) I can use with weekly data:
+```{r}
+fourier.gasoline.k14 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=14)) 
+summary(fourier.gasoline.k14)
+
+fourier.gasoline.k15 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=15)) 
+summary(fourier.gasoline.k15)
+
+fourier.gasoline.k16 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=16)) 
+summary(fourier.gasoline.k16)
+
+fourier.gasoline.k17 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=17)) 
+summary(fourier.gasoline.k17)
+
+fourier.gasoline.k18 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=18)) 
+summary(fourier.gasoline.k18)
+
+fourier.gasoline.k19 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=19)) 
+summary(fourier.gasoline.k19)
+
+fourier.gasoline.k20 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=20)) 
+summary(fourier.gasoline.k20)
+
+fourier.gasoline.k21 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=21)) 
+summary(fourier.gasoline.k21)
+
+fourier.gasoline.k22 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=22)) 
+summary(fourier.gasoline.k22)
+
+fourier.gasoline.k23 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=23)) 
+summary(fourier.gasoline.k23)
+
+fourier.gasoline.k24 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=24)) 
+summary(fourier.gasoline.k24)
+
+fourier.gasoline.k25 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=25)) 
+summary(fourier.gasoline.k25)
+
+fourier.gasoline.k26 <- tslm(gasoline.data ~ trend + fourier(gasoline.data, K=26)) 
+summary(fourier.gasoline.k26)
+```
+I'm going to move forward with k=12 for now, since this returned the best adjusted R squared for now if only slightly better.
+
+```{r}
+autoplot(gasoline.data, series="Data") +
+  autolayer(fitted(fourier.gasoline.k12), series="Fitted") +
+  xlab("Year") + ylab("Million Barrels per Day") +
+  ggtitle("Weekly Gasoline Product Supplied 1991-2004")
+
+cbind(Data=gasoline.data, Fitted=fitted(fourier.gasoline.k12)) %>%
+  as.data.frame() %>%
+  ggplot(aes(x = Data, y = Fitted,
+             colour = as.factor(cycle(gasoline.data)))) +
+    geom_point() +
+    ylab("Fitted") + xlab("Actual values") +
+    ggtitle("Weekly Gasoline Product Supplied 1991-2004") +
+    scale_colour_brewer(palette="Dark2", name="Weekly") +
+    geom_abline(intercept=0, slope=1)
+```
+### *b. Select the appropriate number of Fourier terms to include by minimising the AICc or CV value.*
+
+The adjusted R^2 alone is not a good measure of the predictive ability of a model, so I will run the CV function on each tslm I've created:
+```{r}
+
+fit.gasoline <- tslm(gasoline.data ~ trend + season)
+autoplot(gasoline.data, series="Data") +
+  autolayer(fitted(fit.gasoline), series="Fitted") +
+  xlab("Year") + ylab("Million Barrels per Day") +
+  ggtitle("Weekly Gasoline Product Supplied 1991-2004")
+
+cbind(Data=gasoline.data, Fitted=fitted(fit.gasoline)) %>%
+  as.data.frame() %>%
+  ggplot(aes(x = Data, y = Fitted,
+             colour = as.factor(cycle(gasoline.data)))) +
+    geom_point() +
+    ylab("Fitted") + xlab("Actual values") +
+    ggtitle("Weekly Gasoline Product Supplied 1991-2004") +
+    scale_colour_brewer(palette="Dark2", name="Weekly") +
+    geom_abline(intercept=0, slope=1)
+```
+
+```{r}
+CV(fit.gasoline)
+CV(fourier.gasoline.k2)
+CV(fourier.gasoline.k3)
+CV(fourier.gasoline.k4)
+CV(fourier.gasoline.k5)
+CV(fourier.gasoline.k6)
+CV(fourier.gasoline.k7)
+CV(fourier.gasoline.k8)
+CV(fourier.gasoline.k9)
+```
+
+```{r}
+CV(fourier.gasoline.k10)
+CV(fourier.gasoline.k11)
+CV(fourier.gasoline.k12)
+CV(fourier.gasoline.k13)
+CV(fourier.gasoline.k14)
+CV(fourier.gasoline.k15)
+CV(fourier.gasoline.k16)
+CV(fourier.gasoline.k17)
+CV(fourier.gasoline.k18)
+CV(fourier.gasoline.k19)
+```
+
+```{r}
+CV(fourier.gasoline.k20)
+CV(fourier.gasoline.k21)
+CV(fourier.gasoline.k22)
+CV(fourier.gasoline.k23)
+CV(fourier.gasoline.k24)
+CV(fourier.gasoline.k25)
+CV(fourier.gasoline.k26)
+```
+The lowest AICc is my k=13 model. The lowest CV is my k=7 model. Finally, the lowest BIC is my k=10. For the purpose of this class, I will move forward with the k=13 model.
+
+
+### *c. Check the residuals of the final model using the checkresiduals() function. Even though the residuals fail the correlation tests, the results are probably not severe enough to make much difference to the forecasts and prediction intervals. (Note that the correlations are relatively small, even though they are significant.)*
+```{r}
+
+checkresiduals(fourier.gasoline.k13)
+```
+###*d. To forecast using harmonic regression, you will need to generate the future values of the Fourier terms.Forecast the next year of data.*
+```{r}
+fc <- forecast(fourier.gasoline.k13, newdata=data.frame(fourier(gasoline.data,13,52)))
+autoplot(fc)
+```
+### *e. Plot the forecasts along with the actual data for 2005. What do you find?*
+```{r}
+gasoline_2005<-window(gasoline, end = 2005)
+autoplot(gasoline_2005)
+```
+The forecast was pretty close, but the ending data point of 2005 was higher than predicted. The forecast did follow the general trend and accounted correctly for seasonality.
+
+
+
+# We fitted a harmonic regression model to part of the gasoline series in Exercise 6 in Section 5.10. We will now revisit this model, and extend it to include more data and ARMA errors. 
+
+### *a. Using tslm(), fit a harmonic regression with a piecewise linear time trend to the full gasoline series. Select the position of the knots in the trend and the appropriate number of Fourier terms to include by minimising the AICc or CV value.*
+```{r}
+autoplot(gasoline)
+
+gasoline.harmonic <- tslm(gasoline ~ trend + fourier(gasoline, K=13))
+
+t <- time(gasoline)
+t.break1 <- 1991
+t.break2 <- 2005
+tb1 <- ts(pmax(0, t - t.break1), start = 1991)
+tb2 <- ts(pmax(0, t - t.break2), start = 1991)
+
+fit.pw <- tslm(gasoline ~ t + tb1 + tb2)
+
+autoplot(gasoline) +
+  autolayer(fitted(gasoline.harmonic), series = "Harmonic/Fourier") +
+  autolayer(fitted(fit.pw), series = "Piecewise") +
+  xlab("Year") + ylab("Million Barrels per Day") +
+  ggtitle("US Finished Motor Gasoline Product Supplied 1991-2017") +
+  guides(colour = guide_legend(title = " "))
+
+```
+I decided to just move forward with the k value I used in the last exercise for my harmonic fit. For my piecewise fit, it appeared there was a constant linear upward trend from the beginning of the data until 2005. From then on the series apperad to plateau.
+
+
+
+### *b. Now refit the model using auto.arima() to allow for correlated errors, keeping the same predictor variables as you used with tslm().*
+```{r}
+
+gasoline.auto <- auto.arima(gasoline) # Won't allow me to use 'trend' object past this point? Unable to add in my predictors
+gasoline.auto
+
+#gasoline.auto2 <- auto.arima(gasoline[, trend], xreg=gasoline[,fourier(gasoline, K=13)])
+
+```
+```{r}
+
+autoplot(gasoline) +
+  autolayer(fitted(gasoline.harmonic), series = "Harmonic/Fourier") +
+  autolayer(fitted(fit.pw), series = "Piecewise") +
+  autolayer(fitted(gasoline.auto), series = "Auto.arima") +
+  xlab("Year") + ylab("Million Barrels per Day") +
+  ggtitle("US Finished Motor Gasoline Product Supplied 1991-2017") +
+  guides(colour = guide_legend(title = " "))
+```
+Based on the visualization alone I would move forward with my auto.arima fitted model, but I will cross examine against the residuals first.
+
+
+
+### *c. Check the residuals of the final model using the checkresiduals() function. Do they look sufficiently like white noise to continue? If not, try modifying your model, or removing the first few years of data.*
+```{r}
+
+checkresiduals(gasoline.harmonic)
+checkresiduals(fit.pw)
+checkresiduals(gasoline.auto)
+```
+As I suspected my auto.arima performs the best out of my tested models. However, there is still a significant pattern in my acf plot so I will remove older data.
+```{r}
+
+gasoline_post2005<-window(gasoline, start = 2005)
+gasoline.auto<-auto.arima(gasoline_post2005)
+checkresiduals(gasoline.auto)
+```
+Only analyzing 12 years of data brought my p value into a realistic range for analysis, and reduced the pattern I was seeing in my acf plot.
+
+
+
+### *d. Once you have a model with white noise residuals, produce forecasts for the next year.*
+```{r}
+
+autoplot(forecast(gasoline.auto), h=52)
+```
+I would argue that the forecast would capture the correct future values within the 95% CI, but I wouldn't suggest using this model in practice. I would do further analysis with selection of predictors and would also experiment with including AR in my ARIMA or ARMA model, since auto.arima didn't select an AR approach. 
+
+
+
+
+
+
+
+
+
+

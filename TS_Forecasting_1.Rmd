@@ -1,0 +1,241 @@
+---
+title: "HW1_TS_KatieBaerveldt"
+author: "Katie B"
+date: "8/26/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Problem 1: Consider the weekly spot prices for crude oil (dollars per gallon) from January 2004 to January 2016. The data file is crudeoil_w0416.csv and contains dates (date) and prices (price). Note that the data are separated by commas. Use the zoo package as well as fbasics package (see week 1 zoo code example).
+
+-----------------------------------------------------
+
+Data import & set-up:
+```{r}
+library(tseries)
+library(zoo)
+library(fBasics)
+library(xts)
+library(ggplot2)
+
+crude <- read.table('C:/Users/kbaer/Desktop/Katie/Time Series (Fall A 2019)/crudeoil_w0416.csv', header=T, sep=',')
+
+#crude
+```
+a) Create a time plot for the time series of spot prices. Make sure the plot is correctly labeled and titled. Analyze the time trend displayed by the plot, and discuss if data show any striking pattern, such as upward/downward trends or seasonality?
+```{r}
+crude_zoo = zoo(crude$price, as.Date(as.character(crude$date), format = "%d-%b-%y"))
+
+#crude_zoo
+class(crude_zoo)
+
+print("head of TS")
+head(time(crude_zoo))
+print("Starting date")
+start(crude_zoo)
+print("Ending date")
+end(crude_zoo)
+head(crude_zoo)
+
+### Needs to be a ts object in order to manipulate ###
+
+crude_TS <- ts(crude_zoo, start=2004, frequency=52)
+#crude_TS
+
+plot.ts(crude_TS, main = "Plot.ts command") 
+```
+```{r}
+
+### Now let's try a different method of time plotting ###
+
+library(ggfortify)
+autoplot(crude_TS) +
+  ggtitle("Crude Oil Prices 2004-2016") +
+  xlab("Year") +
+  ylab("Price")
+
+```
+```{r}
+
+plot(decompose(crude_TS))
+
+```
+
+```
+Overall, it appears with the data provided that there is an upward trent, however there are significant shortfalls that could either be seasonal  or cyclical. I would estimate that these major events are cyclical rather than seasonal because based on the data we have, it doesn't look like this is a part of a fixed frequency and could be because of economic pitfalls. The two major declines only occur twice - once in 2009, and the other in the beginning of 2015. However, these could also just be shocks, but I would estimate that more data is required to make that judgement.
+
+Regarding seasonality, it does appear that there are recurring ebbs and flows that are much smaller and occur in repetition. From the data provided, I would estimate that in a given year crude oil prices surge in the summer time and are declining near the holidays.
+```
+b) Compute the percentage change rate of spot prices using the formula  rate = (pt - pt-1) /pt-1, where pt is the oil price . Plot the percent change. Describe what you see.
+```{r}
+crude_lag = lag(crude_TS, k=-1);
+head(crude_lag)
+pricedif = diff(crude_TS)
+```
+```{r}
+rate=(crude_TS-crude_lag)/crude_lag
+head(rate)
+```
+```{r}
+plot.ts(rate, main = "Plot.ts command") 
+```
+```{r}
+plot(decompose(rate))
+
+```
+From these visualizations, I can determine that the percentage change of spot prices has a seasonal attribute but does not necessarily have an overarching trend. The rate of price change seems the biggest when transitioning into the new year, and gradually declines overall throughout a given year.
+```
+```
+c) Analyze the distribution of rate using a histogram and a normal quantile plot. Is the distribution of rate symmetric? Is it close to a normal distribution?
+```{r}
+hist(rate, xlab="Returns", prob=TRUE, main="Histogram") 
+xfit<-seq(min(rate),max(rate),length=40) 
+yfit<-dnorm(xfit,mean=mean(rate),sd=sd(rate)) 
+lines(xfit, yfit, col="blue", lwd=2)
+
+```
+```
+This histogram appears to show the different bins of the change rate of pricing. To me, this appears to be a somewhat normal distribution with a change rate of 0.0 to 0.05 having the highest density or occurrences. 
+```
+```{r}
+qqnorm(rate) 
+qqline(rate, col = 2)
+
+plot(rate) 
+```
+The linearity of the data suggests that like I saw in the histogram, the change rates of price appear to be more normally distributed. There are some points in the data that reflect shocks.
+```
+d) Create and plot the log value of the spot price. Reflect on your findings.
+```
+```{r}
+rate2 = diff(log(crude_TS))
+print("Log Return")
+head(rate2)
+print("")
+
+print("coredata") # Retrieves numerical values from a time series #
+rate_core=coredata(rate2)
+
+head(rate_core)
+tail(rate_core)
+```
+
+```{r}
+hist(rate_core, xlab="Log Returns", prob=TRUE, main="Histogram") 
+xfit<-seq(min(rate_core),max(rate_core),length=40) 
+yfit<-dnorm(xfit,mean=mean(rate_core),sd=sd(rate_core)) 
+lines(xfit, yfit, col="blue", lwd=2)
+```
+I would say that this distribution nearly mirrors the histogram I created without the logarithmic values, and that while useful it is not necessarily needed for this example since the rate change of pricing distributes pretty evenly.
+```
+```{r}
+```
+Problem 2: Download some monthly Australian retail data from the book website. These represent retail sales in various categories for different Australian states, and are stored in a MS-Excel file. 
+
+a) Read in the data
+```
+```{r}
+retaildata <- readxl::read_excel("retail.xlsx", skip=1)
+```
+b) Select one of the time series as follows (but replace the column name with your own chosen column):
+```{r}
+myts <- ts(retaildata[,"A3349555V"],
+  frequency=12, start=c(1982,4))
+```
+C) Explore your chosen retail time series using the following functions. Can you spot any seasonality, cyclicity and trend? What do you learn about the series?
+```{r}
+library(ggfortify)
+autoplot(myts)
+```
+There appears to be an upward trend year over year, with seasonality as well since there appears to be a fixed frequency of ebbs and flows that repeat at reoccurring data points (i.e. retail seems to do well near the holidays)
+
+```{r}
+library(ggseas)
+library(forecast)
+ggseasonplot(myts, year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("Sales") +
+  ggtitle("Seasonal plot: Australian retail data")
+```
+  Again, an upward trend is visible even though the main focus is the seasonality of the data. Here it's more clear that there's a jump in retail performance Nov-Dec that occurs each year.
+```{r}
+ggsubseriesplot(myts) +
+  ylab("Sales") +
+  ggtitle("Seasonal subseries plot: Australian retail data")
+```
+Another emphasis on the seasonality of this data is seen through the jump in performance from the typical sales Nov-Dec. I prefer the regular seasonal plot, because it's easiser to see the seasonal pattern since it occurs year over year. This is just a bigger focus on the average of the seasonal progression.
+
+```{r}
+ausretail_lag <- window(myts, start=1982)
+gglagplot(ausretail_lag) # Monthly instead of quarterly #
+```
+I don't think trend is as apparent in this visualization, but it's easy to see that there is a seasonal pattern in the data because it shows a fixed pattern year-over-year of sales starting in the lower right quadrant, maintaining a steady pace throughout the year, then rising sharply near the end. With this visualization, however, it's more obvious through lag 12 that this year did not see as great of a performance, and may be a shock in the data since it's the only sequence like itself in the data.
+```{r}
+ggAcf(ausretail_lag)
+```
+The biggest differences in data points between the current and previous lag points are shown by the coefficients given near the beginning/end of a year. Overall, I can determine from the visualizations used here that there is an overall upward trend with seasonality suggesting that sales will increase over the holidays on a yearly basis.
+```{r}
+```
+Problem 3: Using the Lubridate package, complete the tutorial questions at the link provided.
+```{r}
+#install.packages("lubridate")
+library(lubridate)
+```
+Exercise 1
+Populate a variable called “start_date” with a date representation of string “23012017”
+```{r}
+start_date<-dmy(23012017)
+start_date
+```
+Exercise 2
+Use the lubridate function today to print the current date
+```{r}
+today()
+```
+Exercise 3
+Extract the year part from the “start_date” variable created on exercise 1
+```{r}
+year(start_date)
+```
+Exercise 4
+Extract the month part from the “start_date” variable created on exercise 1
+```{r}
+month(start_date)
+```
+Exercise 5
+Extract the day part from the “start_date” variable created on exercise 1
+```{r}
+day(start_date)
+```
+Exercise 6
+Set the month in variable “start_date” to February
+```{r}
+month(start_date)<-02
+start_date
+```
+Exercise 7
+Add 6 days to variable “start_date”.
+Did you notice what happened to the month value?
+```{r}
+start_date + days(6)
+```
+The month automatically goes into March
+
+Exercise 8
+Substract 3 months from variable “start_date”
+```{r}
+start_date - months(3)
+```
+Exercise 9 (Advanced)
+Populate a field called concatenated_dates with a vector of dates containing the following values:
+“31.12.2015”, “01.01.2016”, “15.02.2016”
+```{r}
+concatenated_dates <- dmy(c("31.12.2015", "01.01.2016",  "15.02.2016"))
+concatenated_dates
+```
+Exercise 10 (Advanced)
+Calculate in a short and simple way the addition of 1 thru 10 days to “start_date” variable
+```{r}
+start_date + (c(1:10) * days(1))
+```

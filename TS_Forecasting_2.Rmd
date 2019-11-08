@@ -1,0 +1,548 @@
+---
+title: "HW2_TS_KatieBaerveldt"
+author: "Katie B"
+date: "9/8/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# **Homework 2: Part A**
+
+### Question 1
+
+a)	Plot the time series and comment on its components (trend, cyclical, seasonality, random). Discuss the mean, variance, skewness, and kurtosis (four moments) of the time series. 
+
+Data import setup:
+```{r}
+
+library(tseries)
+library(forecast)
+library(zoo)
+library(fBasics)
+library(xts)
+library(ggplot2)
+library(moments)
+library(fpp2) #Part 2
+library(seasonal)
+
+alcohol <- read.table('C:/Users/kbaer/Desktop/Katie/Time Series (Fall A 2019)/Alcohol.csv', header=T, sep=',')
+
+#alcohol
+```
+Data transformation:
+```{r}
+alcohol.ts = ts(data=alcohol$Alcohol.demand..log.spirits.consumption.per.head...UK..1870.1938, frequency = 3, start=c(1870,4), end=c(1938,12))
+
+alcohol.zoo <- zoo(alcohol.ts)
+```
+Decomposing the time series:
+```{r}
+plot(alcohol.ts)
+plot(decompose(alcohol.ts))
+```
+By doing classical decomposition alone, I can see that there's shifting seasonality but the trend and random graphs don't provide as much insight. The sharp decline that is likely caused by the Prohibition serves as a shock to the data, just as well as the sharp increase in the 1930s that was caused by the Great Depression.
+
+More EDA:
+```{r}
+basicStats(alcohol.ts)
+```
+Even though I've decomposed the original time series data, I'd like to do a seasonplot for a closer look on variation between time periods:
+```{r}
+seasonplot(window(alcohol.ts,start = 1871, end = 1881), year.labels = TRUE, col = 1:10, main = "Seasonal plots of log alcohol consumption 1871-1881")
+```
+For this I just wanted to see if there was a significant change in the first 10 years of the data. This isn't the easiest vizualization to read, but I can see that there was a significant increase in consumption from 1871 to 1872, which climbs downward until 1876 and begins to slowly rise again. On a year-by-year basis, there seems to be a seasonal pattern of stagnant rise or fall in consumption until the beginning of the second "season", although that is not true for every year.
+
+I want to see what this seasonplot looks like with all of the data at once, so I will try the ggseasonplot method we used in HW 1:
+```{r}
+ggseasonplot(alcohol.ts, year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("Log Consumption") +
+  ggtitle("Seasonal plot: Log Alcohol Consumption 1871-1942")
+```
+This is still very messy, but I can clearly see that log consumption was highest in the 1930s and lowest in the late 1880s/early 1890s. 
+
+Now I will dissect the "four moments":
+```{r}
+hist(alcohol.ts, xlab="Log Alcohol Consumption 1871-1942", prob=TRUE, main="Histogram") 
+xfit<-seq(min(alcohol.ts),max(alcohol.ts), length=192) 
+# Why this length value? Tested other random values but could not determine how to select a value
+yfit<-dnorm(xfit,mean=mean(alcohol.ts),sd=sd(alcohol.ts)) 
+lines(xfit, yfit, col="red", lwd=1)
+```
+```{r}
+qqnorm(alcohol.ts) 
+qqline(alcohol.ts, col = 2) 
+skewness(alcohol.ts) 
+kurtosis(alcohol.ts)
+```
+Through the overview of the histogram and the Q-Q plot, it's easy to see that this is not a normal distribution. The mean of the data lies around 1.96 and has high variance in density. The skewness of the tails also shows a great disparity, which is reflected in the steep kurtosis.
+
+b)	Examine the normality of the time series using the Jarque-Bera (JB) test. Please write out the null and alternative hypotheses and reach a conclusion. What can you do if the Alcohol time series is not normally distributed? What transformation can you do? 
+```{r}
+normalTest(alcohol.ts,method=c("jb"))
+```
+H0 = Data is normally distributed (p > 0.05)
+H1 = Data is not normally distributed (p < 0.05)
+
+Given this outcome, I would say that I reject the null hypothesis being that the data is normally distributed. It is clear that if I want to analyze this further as a time series, I would need to perform a transformation to the data. I will start by performing a Box Cox transformation.
+
+The purpose is to simplify the patterns in the historical data by removing known sources of variation, and/or by making the pattern more consistent across the whole data set ("Forecasting: Principles and Practice")
+```{r}
+autoplot(alcohol.ts) # Shows the original plot so we can compare against the adjusted plot #
+BoxCox.lambda(alcohol.ts) 
+autoplot(BoxCox(alcohol.ts, lambda="auto"))
+normalTest(BoxCox(alcohol.ts,lambda="auto"), method=c("jb"))
+```
+This didn't have the level of success I was hoping for, so I will try another method and just take the natural log of the data:
+```{r}
+alcohol_log <- log(alcohol.ts)
+normalTest(alcohol_log, method=c("jb"))
+qqnorm(alcohol_log)
+qqline(alcohol_log, col = 2)
+
+autoplot(alcohol_log)
+```
+Not much of a transformation here either.
+
+c)	Check the serial correlation in the Alcohol time series using the ACFs and ACF plot (correlogram). Comment on what you see. Examine the serial correlation in the time series using the Ljung-Box test. Please write out the null and alternative hypotheses and reach a conclusion.
+```{r}
+ggsubseriesplot(alcohol.ts)
+acf(alcohol.ts)
+```
+```{r}
+Box.test(alcohol.ts,lag=12,type='Ljung')
+```
+H0 = Data is normally distributed (p > 0.05)
+H1 = Data is not normally distributed (p < 0.05)
+
+There is serial autocorrelation present in this data as seen through the correlation between periods and overall downward trend of the ACF plot. This implies that each observation is positively associated with its recent past, at least through the lags present in this data, but the association becomes weaker as the lags increase.
+
+As far as alcohol consumption goes in a typical population, it's apparent that drinking habits are not subject to much fluctuation. Consumption will increase slightly on weekends, or when the general population is not working such as holidays. The latter is more apparent in the data since this is taken on a yearly basis - case in point, alcohol consumption will show seasonality but there is no reason that a trend would be present unless external factors were at play. Overall consumption will only spike or drop dramatically if there is a shock event associated with it - in this case, there are two (Great Depression and Prohibition), so the data is skewed in both directions over this time frame. 
+
+
+### Question 2
+
+Please complete ONLY questions a, b, c, and d of Exercise #2 (on the plastics data set) in Chapter 6 of Hyndman text. Link to Exercise: https://otexts.com/fpp2/decomposition-exercises.html. This question is worth 40 points. Be sure to load the fpp2 package to get the plastics data set.
+
+a) Plot the time series of sales of product A. Can you identify seasonal fluctuations and/or a trend-cycle?
+
+```{r}
+?plastics #info on the data
+
+plot(plastics)
+plot(decompose(plastics))
+```
+From a simple time series plot as well as simple decomposition, we can see that there is an upward trend as well as seasonal fluctuations (low at beginning of month, high in the middle of the month).
+
+b. Use a classical multiplicative decomposition to calculate the trend-cycle and seasonal indices.
+```{r}
+plastics %>% decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative Decomposition of Plastic Product Sales")
+```
+c. Do the results support the graphical interpretation from part a?
+
+To me it seems similar to the additive decomposition I performed, perhaps accounding for less remainder in the multiplicative. The upward trend reflects what I see in the models I generated in part a, as well as the pattern in seasonality.
+
+d. Compute and plot the seasonally adjusted data.
+
+```{r}
+#plastics
+
+library(data.table)
+plastics.ts <- ts(plastics, start = c(1991, 1, 1), frequency = 12)
+
+plastics.ts
+
+```
+This converted successfully to actual year values, which I selected, so we can perform SEATS.
+```{r}
+# SEATS creation and overview first
+
+fit.seats <- seas(plastics.ts)
+autoplot(plastics.ts) +
+  ggtitle("SEATS decomposition of Plastic Product Sales")
+```
+```{r}
+autoplot(plastics.ts, series="Data") +
+  autolayer(trendcycle(fit.seats), series="Trend") +
+  autolayer(seasadj(fit.seats), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Monthly Plastic Product Sales") +
+  scale_colour_manual(values=c("gray","blue","red"),
+                     breaks=c("Data","Seasonally Adjusted","Trend"))
+```
+This shows a much smoother interpretation of the data.
+
+
+
+
+### Question 3
+
+Please complete Exercise #5 (on the cangas data set) in Chapter 6 of Hyndman text. Link to Exercise: https://otexts.com/fpp2/decomposition-exercises.html. This question is worth 30 points. Be sure to load the fpp2 package to get the cangas data set. 
+
+a. Plot the data using autoplot(), ggsubseriesplot() and ggseasonplot() to look at the effect of the changing seasonality over time. What do you think is causing it to change so much?
+```{r}
+?cangas
+
+autoplot(cangas)
+ggsubseriesplot(cangas)
+ggseasonplot(cangas)
+```
+From a first glance at these plots, it is apparent that gas production is a volatile business with many internal and external factors at play. Overall there is an upward trend with a lull from the mid 70s to mid 90s, a sharper increase into the 2000s, which begins to taper off near the end of the data. Seasonality, while constant over a decade of time, seems to change overall and could be arguably split into three differing segments of seasonality. I would also argue that it seems constant that gas production settles in the summer months, and rises toward the fall into the winter.
+
+b. Do an STL decomposition of the data. You will need to choose s.window to allow for the changing shape of the seasonal component.
+```{r}
+# Need to take the log in order to do multiplicative STL, since there is upward trend
+
+cangas.STL <- diff(log(cangas))
+
+fit <- stl(cangas.STL, s.window="periodic", robust=TRUE)
+autoplot(fit) +
+  ggtitle("STL decomposition of Monthly Canadian Gas Production - Multiplicative")
+```
+The log allows me to take a multiplicative approach. I can see that there is a faintly positive trend since the relationship tapers above 0 for most of the data, but it captures the slight fall in the middle and especially near the end. This seems to be a better predictor of trend to come. I also see there is seasonality, where the beginning and end of the year show a positive value for production. 
+
+I'll look at how this compares to the addiditive approach out of curiousity:
+
+```{r}
+fit <- stl(cangas, s.window="periodic", robust=TRUE)
+autoplot(fit) +
+  ggtitle("STL decomposition of Monthly Canadian Gas Production - Additive")
+```
+The findings from the multiplicative model can still be derived here, but don't seem as obvious to me. I also notice that there is more remainder data in the middle of the time series.
+
+c. Compare the results with those obtained using SEATS and X11. How are they different?
+```{r}
+# SEATS #
+fit.seats.cangas <- seas(cangas)
+autoplot(fit.seats.cangas) +
+  ggtitle("SEATS decomposition of Monthly Canadian Gas Production")  
+
+# X11 #
+fit.x11.cangas <- seas(cangas, x11="")
+autoplot(fit.x11.cangas) +  ggtitle("X11 decomposition of Monthly Canadian Gas Production")
+
+#the log value, cangas.stl, produced very high remainders when I tried using that instead
+```
+The trend between both methods is nearly similar, but I noticed with X11 that the trend line is smoother. I also noticed slightly more kurtosis in the seasonality of the X11 method than SEATS. Finally, the X11 method produced less remainder data than SEATS.
+
+
+
+
+# **Homework 2: Part B**
+
+### Question 4
+
+Look up the help file for the eggs data set (i.e. type ?eggs into R Studio console). The eggs data set contains the price of a dozen eggs in the United States between 1900 and 1993. 
+```{r}
+?eggs
+```
+a.	Plot and comments on the features of the time series. Experiment with the various options in the holt() function to see how much the forecasts change with damped or exponential trend. Try changing the parameter values for α and β to see how they affect the forecasts. You should do at least 5 forecasts. 
+```{r}
+autoplot(eggs)
+```
+There's a noticeable downward trend in price in the data. I'm curious about the large valley and then steep rise in price in the center of the data. Since this is such a large period of time, I'm going to take a closer look.
+```{r}
+eggdata1 <- window(eggs, start = 1918, end = 1923)
+plot(eggdata1, ylab = "Price of eggs (constant dollars)", xlab = "Year")
+
+eggdata2 <- window(eggs, start = 1928, end = 1940)
+plot(eggdata2, ylab = "Price of eggs (constant dollars)", xlab = "Year")
+
+eggdata3 <- window(eggs, start = 1968, end = 1980)
+plot(eggdata3, ylab = "Price of eggs (constant dollars)", xlab = "Year")
+```
+These sharp falls and increases seem to take place over the course of only a few short years each. It's likely that egg price is correlated with the state of the economy. Because of this suspicion, I would describe this as cyclical.
+
+Forecast 1) Mean
+```{r}
+mean <- meanf(eggs, h=10)
+autoplot(mean)
+summary(mean)
+```
+Forecast 2) Naive
+```{r}
+naive <- naive(eggs, h=10)
+autoplot(naive)
+summary(naive)
+```
+Forecast 3) Weighted Avg SES
+```{r}
+# Borrowed from class example in order to test alpha values 
+
+fit1 <- ses(eggs, alpha = 0.5, initial = "simple", h = 10)
+fit2 <- ses(eggs, alpha = 0.9, initial = "simple", h = 10)
+fit3 <- ses(eggs, h = 10)
+
+summary(fit1)
+summary(fit2)
+summary(fit3)
+```
+I'm going to go ahead and move forward with an alpha of 0.8525 - it seems that more recent data is useful here due to the large amount of time series data at hand.
+```{r}
+plot(fit1, PI=FALSE, ylab="Price of eggs (constant dollars)",
+     xlab="Year", main="", fcol="white", type="o")
+lines(fitted(fit1), col="blue", type="o")
+lines(fitted(fit2), col="red", type="o")
+lines(fitted(fit3), col="green", type="o")
+
+legend("topleft",lty=1, col=c(1,"blue","red","green"), cex = 0.75, 
+       c("data", expression(alpha == 0.5), expression(alpha == 0.9),
+         expression(alpha == 0.85)),pch=1)
+```
+```{r}
+plot(fit1, PI=FALSE, ylim = c(0, 400), ylab="Price of eggs (constant dollars)",
+xlab="Year", main="", fcol="white", type="o")
+test.eggs <- window(eggs, start = 1993)
+lines(test.eggs, col = "black", type = "o")
+lines(fitted(fit1), col="blue", type="o")
+lines(fitted(fit2), col="red", type="o")
+lines(fitted(fit3), col="green", type="o")
+lines(fit1$mean, col="blue", type="o")
+lines(fit2$mean, col="red", type="o")
+lines(fit3$mean, col="green", type="o")
+legend("topleft",lty=1, cex =0.75, col=c(1,"blue","red","green"),
+c("data", expression(alpha == 0.5), expression(alpha == 0.9),
+expression(alpha == 0.85)),pch=1)
+```
+Forecast 4) Holt Method - Additive
+```{r}
+fit.holt <- holt(eggs, alpha=0.85, beta=0.15, initial="simple", h=10)
+summary(fit.holt)
+eggs[1]
+```
+```{r}
+plot(fit.holt, PI=TRUE, ylim = c(0, 400))
+lines(fitted(fit.holt), type = "o", col="purple") 
+lines(fit.holt$mean, col="purple", type="o") 
+lines(test.eggs, col = "black", type = "o")
+lines(fitted(fit1), col="blue", type="o")
+lines(fitted(fit2), col="red", type="o")
+lines(fitted(fit3), col="green", type="o")
+lines(fit1$mean, col="blue", type="o")
+lines(fit2$mean, col="red", type="o")
+lines(fit3$mean, col="green", type="o")
+legend("topleft",lty=1, cex = 0.75, col=c(1,"blue","red","green", "purple"),
+       c("data", expression(alpha == 0.5), expression(alpha == 0.9),
+         expression(alpha == 0.85),"Holt"),pch=1)
+```
+Forecast 5) Holt Method - Multiplicative (Exponential)
+```{r}
+fit.holt2 <- holt(eggs,alpha=0.85,beta=0.15,initial="simple",exponential=TRUE,h=10) 
+summary(fit.holt2)
+```
+```{r}
+plot(fit.holt2, PI=FALSE, ylim = c(0, 400))
+lines(test.eggs, col = "black", type = "o")
+lines(fitted(fit.holt2), col="brown", type = "o")
+lines(fit.holt2$mean, col="brown", type="o")
+legend("topleft", cex =0.75, lty=1, col=c(1,"blue","red","green", "purple", "brown"),
+       c("data", expression(alpha == 0.5), expression(alpha == 0.9),
+         expression(alpha == 0.85),"Holt","Exponential"),pch=1)
+```
+Forecast 6) Holt Method - Damped Multiplicative
+
+I'm choosing to employ dampening on the multiplicative model because there is downward trend in the overall data
+```{r}
+fit.holt3 <- holt(eggs,alpha=0.85,beta=0.15,initial="simple",exponential=TRUE,
+              damped=TRUE, phi=NULL, h=10)
+summary(fit.holt3)
+```
+```{r}
+plot(fit.holt3, PI=FALSE, ylim = c(0, 400))
+lines(test.eggs, col = "black", type = "o")
+lines(fitted(fit.holt3), col="brown", type = "o")
+lines(fit.holt3$mean, col="brown", type="o")
+legend("topleft", cex =0.75, lty=1, col=c(1,"blue","red","green", "purple", "brown"),
+       c("data", expression(alpha == 0.5), expression(alpha == 0.9),
+         expression(alpha == 0.85),"Holt","Exponential"),pch=1)
+```
+b. Which model in part (a) gives the best RMSE? 
+
+It turns out that the Naive forecasting method I used had the lowest RMSE with 26.97157. Moving forward I would likely assign a higher alpha, since it's apparent that the more recent data holds more weight in forecasting.
+
+
+
+### Question 5
+
+Look up the help file for the ukcars data set (i.e. type ?ukcars into R Studio console). The data set contains quarterly UK passenger vehicle production from 1977:1 (first quarter of 1977) to 2005:1 (first quarter of 2005). 
+```{r}
+?ukcars
+```
+a.	Plot and comment on the features of the time series. Decompose the time series using STL and obtain the seasonally adjusted data.
+
+Standard TS plot:
+```{r}
+autoplot(ukcars)
+```
+From the data alone there appears to be a slight upward trend, however I am curious if this is a snapshot of a larger picture since there is a decrease in car production in the beginning of this time grame and again toward the end. This may be cyclical. 
+There also appears to be some seasonality due to the constant ebbing and flowing of the data; for example, peaks seem to occur at the beginning of each year which suggests that there is a rise in production around the holidays.
+
+STL Decomposition:
+```{r}
+ukcars.stl <- stl(ukcars, t.window = 13, s.window="periodic", robust=TRUE)
+autoplot(ukcars.stl) +
+  ggtitle("STL Decomposition of UK Passenger Car Production (thousands)")
+```
+```{r}
+autoplot(ukcars, series="Data") +
+  autolayer(trendcycle(ukcars.stl), series="Trend") +
+  autolayer(seasadj(ukcars.stl), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Quarterly Car Production (thousands)") +
+  scale_colour_manual(values=c("gray","blue","red"),
+                     breaks=c("Data","Seasonally Adjusted","Trend"))
+```
+b.	Forecast the next two years of the series using Holts linear trend method applied to the seasonally adjusted data. What are the parameters of the method? What do they tell you about how quickly the slope and level are changing over time? 
+```{r}
+ukcars.stl %>% seasadj() %>% holt(,h = 8) %>% autoplot()+ ylab("New Orders Index") + ggtitle("Holt forecasts of seasonally adjusted data")
+fit_uk_stl <- ukcars.stl %>% seasadj() %>% holt(,h = 8)
+
+summary(fit_uk_stl)
+```
+When evaluating the parameters in the summary, I immediately notice that the beta parameter is very small, meaning that the slope is changing very little as time progresses. The alpha parameter is also < 1, which tells me that new data points or observations do not greatly influence change or fluctuation.
+
+
+c.	Reseasonalize the forecasts using the following code where decomp is the output from stl() and fit is the output from holt():  
+lastyear <- rep(decomp$time.series[110:113,"seasonal"],2) fc <- fit$mean + lastyear 
+Do the re-seasonalized forecasts look reasonable? Why or why not? 
+```{r}
+lastyear <- rep(ukcars.stl$time.series[110:113,"seasonal"],2) 
+fc <- fit_uk_stl$mean + lastyear 
+
+autoplot(fc)
+```
+No, the resasonalized forecast doesn't appear reasonable or realistic. Taking the mean and applying it to the data is giving a gross oversimplification of the trend line.
+
+
+*d.	Apply an X11 and a SEATS model using a two-year horizon. SKIPPED PER DISCUSSION NOTE.*
+
+e.	Use ets() to choose a seasonal model for the data. How would you explain the results? Compare the RMSE of the two models. Which gives the better in-sample fit?  
+
+Additive ETS:
+```{r}
+cardata <- window(ukcars, start = 1995)
+fit_add <- ets(cardata, model = "ANN")
+plot(forecast(fit_add, h=8), ylab="Quarterly UK Car Production")
+summary(fit_add)
+ls(fit_add)
+fit_add$par
+```
+I chose a more recent window to cover the last decade of the data since this would show a better representation of the forecast.
+
+Multiplicative ETS:
+```{r}
+fit_mult <- ets(cardata, model = "MNN")
+plot(forecast(fit_mult, h=8), ylab="Quarterly UK Car Production")
+summary(fit_mult)
+ls(fit_mult)
+fit_mult$par
+```
+Final comparison:
+```{r}
+fit_ets_ukcars <- ets(cardata)
+summary(fit_ets_ukcars)
+plot(fit_ets_ukcars)
+plot(forecast(fit_ets_ukcars, h = 8), ylab = "Quarterly UK Car Production")
+
+fit_add$aic
+fit_mult$aic
+```
+The ANN and MNN methods both produced similar results, with the RMSE of the additive method showing only slightly lower. When I ran the third ETS, the model chose the ANA method with an RMSE of 24.374 as opposed to the ANN and MNN which both had an RMSE of nearly 39. When I ran the AIC for the ANN and MNN, their values were nearly identical as well.
+
+
+f.	Compare the forecasts from the above approaches. Which seems most reasonable? Why? 
+
+It seems to me that the forecast from the third ETS model is the most reliable. The ANA forecast follows a predicted trend line, whereas the ANN and MNN ETS models follow more of a blanket average rather than taking into account a moving or weighted average.
+
+
+
+### Question 6
+
+Look up the help file for the visitors data set (i.e. type ?visitors into R Studio console). The data set contains monthly short-term overseas visitors in Australia between May 1985 and April 2005. 
+```{r}
+?visitors
+```
+a.	Make a time plot of your data and describe the main features of the series. Forecast the next two years using Holt-Winters' multiplicative method. Why is multiplicative seasonality necessary here?  
+
+Time plot & overview:
+```{r}
+autoplot(visitors)
+plot(decompose(visitors))
+```
+Multiplicative decomposition since there is trend:
+```{r}
+visitors %>% decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative Decomposition of Montly Australian Overseas Visitors")
+```
+Travel seems to have been increasing steadily from 1985 until 2005, with peak visiting season being around the end of the year and dropping dramatically each January. Further decomposition confirms that there is upward trend and seasonality, and that there is little remainder data left over.
+
+Holt-Winters' multiplicative method:
+```{r}
+
+aussie_window <- window(visitors, start=1999, end=2005) # less clutter
+fit1hw <- hw(aussie_window,seasonal="additive")
+fit2hw <- hw(aussie_window,seasonal="multiplicative")
+
+test.aussie <- window(visitors, start=2005)
+plot(fit2hw,ylab="Monthly Short Term Visitors in Australia",
+     PI=FALSE, type="o", fcol="white", xlab="Year")
+lines(test.aussie, col = "black", type = "o")
+lines(fitted(fit1hw), col="red", lty=2)
+lines(fitted(fit2hw), col="green", lty=2)
+lines(fit1hw$mean, type="o", col="red")
+lines(fit2hw$mean, type="o", col="green")
+legend("topleft",lty=1, cex = 0.75, pch=1, col=1:3, 
+  c("data","Holt Winters' Additive","Holt Winters' Multiplicative"))
+```
+Multiplicative seasonality would be the preferred method because there is clear upward trend in the data. When ran alongside the additive forecast, we can see that the multiplicative forecast accounts for slightly more kurtosis and follows the nature of the past data more closely.
+
+
+b.	Experiment with making the trend exponential and/or damped, investigating at least two alternatives. Compare the RMSE of the one-step forecasts from the various methods. Which do you prefer?  Why? 
+
+Exponential:
+```{r}
+fit2hw_expo <- hw(aussie_window,seasonal="multiplicative", exponential = TRUE)
+
+test.aussie <- window(visitors, start=2005)
+plot(fit2hw_expo,ylab="Monthly Short Term Visitors in Australia",
+     PI=FALSE, type="o", fcol="white", xlab="Year")
+lines(test.aussie, col = "black", type = "o")
+lines(fitted(fit2hw_expo), col="green", lty=2)
+lines(fit2hw_expo$mean, type="o", col="green")
+legend("topleft",lty=1, cex = 0.75, pch=1, col=1:3, 
+  c("data","Holt Winters' Multiplicative with Exponential Trend"))
+
+summary(fit2hw_expo)
+```
+Damped:
+```{r}
+fit2hw_damp <- hw(aussie_window,seasonal="multiplicative", exponential = FALSE, damped=TRUE)
+
+test.aussie <- window(visitors, start=2005)
+plot(fit2hw_damp,ylab="Monthly Short Term Visitors in Australia",
+     PI=FALSE, type="o", fcol="white", xlab="Year")
+lines(test.aussie, col = "black", type = "o")
+lines(fitted(fit2hw_damp), col="green", lty=2)
+lines(fit2hw_damp$mean, type="o", col="green")
+legend("topleft",lty=1, cex = 0.75, pch=1, col=1:3, 
+  c("data","Holt Winters' Multiplicative with Damped Trend"))
+
+summary(fit2hw_damp)
+```
+Between the two, I would choose the damped Holt-Winters model because it follows the trend more conservatively and has a lower RMSE. It also performs more closely to the actual data.
+
+
+c.	Now use the ets() function to select a model automatically. Does it choose the same model you did? How would you explain that? 
+```{r}
+fit_ets_visitors <- ets(aussie_window)
+summary(fit_ets_visitors)
+plot(fit_ets_visitors)
+plot(forecast(fit_ets_visitors, h = 12), ylab = "Monthly Australian Overseas Visitors")
+```
+The ETS model chose simple exponential smoothing with additive errors (ANN). This is not the model I had chosen, as I had opted to use a damped value and a multiplicative approach under Holt Winters. My RMSE was slightly lower, however it is understandable that the ets() function would select this model because it still has low error, and the data window I selected does not show the overall trend, which could have led to a selection of an additive approach.
