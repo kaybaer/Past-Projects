@@ -1,0 +1,390 @@
+---
+title: "FinalProject_TS_KatieBaerveldt"
+author: "Katie B"
+date: "10/7/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Option #2: Reinforcement of Class Material
+
+### *1. Perform a full time series EDA on cnt. Verify the statistical properties of the time series (cnt) and make any transformations as necessary. Run both visual and hypothesis driven tests. Discuss your conclusions.*
+
+Data import & library setup:
+```{r}
+# Since I'm loading multiple packages at once, if there's an error loading a function later in the code I will repost a library() in case something is being masked #
+
+library(tseries)
+library(fBasics)
+library(ggplot2)
+library(forecast)
+library(moments)
+library(fpp2)
+library(seasonal)
+library(urca)
+library(stats)
+library(data.table)
+```
+```{r}
+
+bikes <- read.table('C:/Users/kbaer/Desktop/Katie/Time Series (Fall A 2019)/day.csv', header=T, sep=',')
+head(bikes)
+class(bikes)
+
+```
+Since there's a leap year in the data, I followed the class notes on how to move forward:
+```{r}
+
+library(lubridate)
+leap_year(2011)
+leap_year(2012) 
+
+day_cnt.ts <- ts(bikes$cnt, start=decimal_date(as.Date("2011-01-01")), frequency = 365.25)
+autoplot(day_cnt.ts)
+head(day_cnt.ts)
+tail(day_cnt.ts)
+day_cnt.ts %>% decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative Decomposition of Total Bikes Rented 2011-2012")
+plot(stl(day_cnt.ts, s.window="periodic"))
+```
+Though the raw data has peaks and valleys, the decomposition shows an overall updward trend in total bikes rented per day. Seasonality seems to depend mostly on hours of operation, and I sense there is a cyclical component (i.e. weather) at play.Transformation is necessary as we can see a pattern in the residuals.
+
+Additional EDA and testing:
+```{r}
+
+ggseasonplot(day_cnt.ts, year.labels=TRUE, year.labels.left=FALSE) +
+  ylab("Count") +
+  ggtitle("Total Bike Rentals")
+```
+We can see trend differently here in the growth gap between 2011 and 2012. We can also see seasonality in the way the data mirrors itself year over year, however 2012 is showing some extreme events in the data.
+```{r}
+basicStats(day_cnt.ts)
+
+hist(day_cnt.ts, xlab="Total Bikes Rented", prob=TRUE, main="Histogram") 
+xfit<-seq(min(day_cnt.ts),max(day_cnt.ts), length=192) 
+yfit<-dnorm(xfit,mean=mean(day_cnt.ts),sd=sd(day_cnt.ts)) 
+lines(xfit, yfit, col="red", lwd=1)
+
+qqnorm(day_cnt.ts) 
+qqline(day_cnt.ts, col = 2) 
+skewness(day_cnt.ts) 
+kurtosis(day_cnt.ts)
+```
+From the histogram alone it appears there is a pretty even distribution, though some disparity is a little more visible from the Q-Q plot. The skewness score tells me the data distribution is very slightly left leaning, but kurtosis is low.
+
+Testing normality with JB Test; 
+
+H0 = Data is normally distributed (p > 0.05)
+H1 = Data is not normally distributed (p < 0.05)
+```{r}
+normalTest(day_cnt.ts,method=c("jb"))
+Box.test(day_cnt.ts,lag=10,type='Ljung')
+
+acf(day_cnt.ts)
+```
+Both normality tests performed are telling me that I should reject H0, or the null hypothesis. The data needs to be transformed further in order to achieve stationary status. The ACF confirms that there is serial autocorrelation occuring in the data.
+
+Log and BC testing:
+```{r}
+
+autoplot(day_cnt.ts)
+
+day.log <- log(day_cnt.ts)
+autoplot(day.log) 
+
+day.BC <- BoxCox(day_cnt.ts, lambda="auto")
+autoplot(day.BC)
+```
+```{r}
+acf(day.log)
+acf(day.BC)
+
+normalTest(day.log,method=c("jb"))
+normalTest(day.BC,method=c("jb"))
+```
+My log transformation seems to perform slightly better than my BC, but what if I combined them?
+```{r}
+day.combo <- (day.BC+day.log)
+autoplot(day.combo)
+
+autoplot(day_cnt.ts)
+```
+```{r}
+
+acf(day.combo)
+
+normalTest(day.combo,method=c("jb"))
+```
+This actually performed much worse, so I'll stick with my log value for now and continue transforming:
+```{r}
+
+autoplot(day_cnt.ts)
+day.firstdiff <- diff(day.log)
+autoplot(day.firstdiff)
+```
+This is visually much better than our original series, however I'm still showing that there is a large peak and fall near the end of 2012. I'm going to quickly test if I should do second-order differencing:
+```{r}
+ndiffs(day.log) #no more differencing necessary
+```
+Testing on my differenced data:
+```{r}
+
+acf(day.firstdiff)
+normalTest(day.firstdiff,method=c("jb"))
+Box.test(day.firstdiff,lag=10,type='Ljung')
+summary(ur.kpss(day.firstdiff))
+```
+Much better, I only have three major lags but this seems to still be enough to throw off my normality tests. However, my unit root test shows a test statistic smaller than all of my critical values. For now I will move forward with the first-order differenced log series, but further transformations will take place during questions 3-5.
+
+
+
+### *2. Decompose and forecast your time series using X11, SEATS and STL. Discuss your conclusions.*
+
+For now I'll return to using the standard ts object since we're returning to decomposition:
+```{r}
+
+class(day_cnt.ts)
+
+#day_cnt.ts %>%
+  #(mean(...))
+
+#fit.x11 <- seas(day_cnt.ts, x11="")
+#autoplot(fit.x11) +  ggtitle("X11 Decomposition of Total Bikes Rented 2011-2012")
+
+#fit.seats <- seas(day_cnt.ts)
+#autoplot(fit.seats) +
+  #ggtitle("SEATS Decomposition of Total Bikes Rented 2011-2012")
+```
+Unfortunately I was not able to decompose or forecast from X11 or SEATS; I first ensured I was using a ts object, then attempted aggregating the data since X11 requires monthly or quarterly data, but the output stated I needed a minimum of three years of data. I commented out the base code I was maniuplating so that it won't interfere with the rest of my markdown. Based on the nature of this series, it seems that STL would be the best method of approaching a developed forecast anyway.
+```{r}
+
+#`t.window` controls wiggliness of trend component
+#`s.window` controls variation on seasonal component. periodic means to use the default period
+
+fit.stl <- stl(day_cnt.ts, s.window = "periodic", robust=TRUE)
+autoplot(fit.stl) +
+  ggtitle("STL Decomposition of Total Bikes Rented 2011-2012")
+
+```
+This is the same plot I produced in the beginning of my code, reintroduced for the purpose of this question. My trend line doesn't seem to capture some inconsistencies in the data (seen through the remainder pattern), so I'm going to attempt adjusting the t.window:
+```{r}
+
+fit.stl <- stl(day_cnt.ts, s.window = "periodic", t.window = 177, robust=TRUE)
+autoplot(fit.stl) +
+  ggtitle("STL Decomposition of Total Bikes Rented 2011-2012")
+```
+I played around with the t.window and selected an odd value near half of 365; I can see a trend that more closely resembles the peaks and valleys in my data, but this didn't seem to help clear out remainder data.
+
+Forecasting with STL:
+```{r}
+autoplot(day_cnt.ts, series="Data") +
+  autolayer(seasadj(fit.stl), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("Index") +
+  ggtitle("STL Decomposition of Total Bikes Rented 2011-2012") +
+  scale_colour_manual(values=c("gray","blue"),
+                     breaks=c("Data","Seasonally Adjusted"))
+
+fit.stl %>% 
+  forecast(method='naive', h=14) %>% 
+  autoplot() + ylab("Index") + xlab("Year")
+
+summary(fit.stl %>% forecast(method='naive')) # weight on more recent obs
+```
+STL makes sense with the daily data, but it would need further transformation and analysis. My RMSE is pretty high, and in the forecast I can see that the 95% CI is pretty large.
+
+
+
+### *3. Fit and forecast at least 3* different smoothing models (which may include drift, additive or multiplicative and damp). Discuss your conclusions.*
+
+(1) Simple Exponential Smoothing (SES):
+```{r}
+
+fit.SES <- ses(day_cnt.ts, h = 14) # finding the optimal alpha smoothing parameter
+summary(fit.SES)
+```
+```{r}
+plot(day_cnt.ts, PI=FALSE, ylab="Total rentals",
+     xlab="Year", main="", fcol="white", type="o")
+lines(fitted(fit.SES), col="red", type="o")
+
+legend("topleft",lty=1, col=c(1,"blue","red"), cex = 0.75, 
+       c("data",expression(alpha == 0.3)),pch=1)
+```
+```{r}
+
+autoplot(forecast(fit.SES), h=14)
+
+```
+As we learned in our class discussion, SES alone doesn't account for trend in its forecast, so I ideally wouldn't move forward with just this fit.
+
+(2) Holt's Additive:
+```{r}
+#is.na(day_cnt.ts)
+#na.omit(day_cnt.ts)
+
+# When I tried using Holt's method with the ts object, it returned the 'length = zero' argument. It was successful when I instead used the bikes dataframe, though I can't explain why. The code commented out above was me attempting to comb for NA values in the ts. #
+
+fit.holtadd <- holt(bikes, alpha=0.3, beta = 0.7, initial="simple", h=14)
+summary(fit.holtadd)
+```
+```{r}
+autoplot(forecast(fit.holtadd), h=14)
+```
+There is an obvious fault in this fit and forecast because there are negative values. The forecast overall seems unreliable as well, as it's anticipating the count of total rentals to skyrocket past the highest recorded count in 2012.
+
+(3) Dampened method:
+```{r}
+
+# Code wouldn't allow me to use alpha of 0.3, so I switched the parameters out of curiosity
+
+fit.damp <- holt(day_cnt.ts, alpha=0.7, beta = 0.3, initial="simple", damped = TRUE, h=14)
+summary(fit.damp)
+
+```
+```{r}
+
+autoplot(forecast(fit.damp), h=14)
+```
+Out of all of my attempts at smoothing, the damped model seems to have performed the most realistic forecast. However, my AICc and RMSE lead me to believe there's significant room for improvement.
+
+
+
+### *4. Fit and forecast at least 3 different ARIMA models (which may include seasonal and non-seasonal). Discuss your conclusions.*
+
+I already know that I want to incorporate first-order differencing, so I will leave that as my constant. First, I will attempt non-seasonal.
+```{r}
+
+checkresiduals(day.firstdiff)
+
+```
+(1) Non-Seasonal ARIMA(3,1,0)
+```{r}
+
+fit.arima.1 <- Arima(day_cnt.ts, order=c(3,1,0))
+fit.arima.1
+checkresiduals(fit.arima.1)
+
+autoplot(forecast(fit.arima.1, h = 14))
+```
+The ACF and stationary status of the residuals could be worse, but my AICc and pvalue tell me I should keep testing. From the residuals I ran on my first-order difference model, I feel like I should try non-seasonal with emphasis on the MA component.
+
+(2) Non-seasonal ARIMA (0,1,5)
+
+Since there are 5 significant lags on my ACF for the first-order diff:
+```{r}
+
+fit.arima.2 <- Arima(day_cnt.ts, order=c(0,1,5))
+fit.arima.2
+checkresiduals(fit.arima.2)
+
+autoplot(forecast(fit.arima.2, h = 14))
+```
+The residuals on my MA non-seasonal model are slightly better. Finally, I will test an auto.arima model, as I feel it will select a seasonal approach.
+
+(3) Seasonal auto.arima (1,0,2)(0,1,0)[365] with drift :
+```{r}
+library(tidyverse)
+library(xts)
+
+fit.auto <- auto.arima(day_cnt.ts, seasonal=TRUE)
+
+fit.auto
+autoplot(forecast(fit.auto), h=14)
+```
+The AICc is half of the value from my last model. I'll check the residuals to compare:
+```{r}
+checkresiduals(fit.auto)
+```
+The residuals on this model look highly unusual, so I will test a fourth and final auto.arima without the seasonal component.
+
+(4) Non-seasonal auto.arima:
+```{r}
+
+fit.auto2 <- auto.arima(day_cnt.ts, seasonal=FALSE)
+
+fit.auto2
+autoplot(forecast(fit.auto2), h=14)
+```
+This model has a slightly better AICc than my MA non-seasonal model, but I'll doublecheck the residuals
+```{r}
+checkresiduals(fit.auto2)
+```
+### *5. Fit and forecast at least 3* different dynamic regression models using a set or subset of other covariates which are in the dataset (cnt is still your DV). The covariates may need lagged too. Then discuss your conclusions.*
+
+(1) First forecast; manual non-seasonal ARIMA (1,1,1) with 'weekday' covariate
+
+I'm going to borrow my ARIMA that performed the best from the last part of the homework to start:
+```{r}
+
+dynamic.reg.model1 <- Arima(day_cnt.ts, xreg= bikes[, "weekday"], order=c(1,1,1))
+
+dynamic.reg.model1
+```
+AICc isn't much better, but I'll doublcheck the residuals:
+```{r}
+
+cbind("Regression Errors" = residuals(dynamic.reg.model1, type="regression"),
+      "ARIMA errors" = residuals(dynamic.reg.model1, type="innovation")) %>%
+  autoplot(facets=TRUE)
+
+checkresiduals(dynamic.reg.model1)
+```
+It could be worse! There are some significant lags in the ACF plot and the distribution isn't very even, but the p value is above 0.05. 
+```{r}
+
+fcast1 <- forecast(dynamic.reg.model1, xreg=bikes[, "weekday"], 14)
+autoplot(fcast1)
+```
+(2) Second forecast; manual non-seasonal ARIMA (1,1,1) with 'season' covariate
+```{r}
+
+dynamic.reg.model2 <- Arima(day_cnt.ts, xreg= bikes[, "season"], order=c(1,1,1))
+
+dynamic.reg.model2
+```
+```{r}
+
+cbind("Regression Errors" = residuals(dynamic.reg.model2, type="regression"),
+      "ARIMA errors" = residuals(dynamic.reg.model2, type="innovation")) %>%
+  autoplot(facets=TRUE)
+
+checkresiduals(dynamic.reg.model2)
+```
+```{r}
+
+fcast2 <- forecast(dynamic.reg.model2, xreg=bikes[, "season"], 14)
+autoplot(fcast2)
+```
+There isn't much of a visible difference aside from the forecast plot and p value. I'm going to attempt a different approach for my last model.
+
+(3) Third forecast; manual non-seasonal ARIMA (1,1,1) with 'mnth' covariate
+```{r}
+
+dynamic.reg.model3 <- Arima(day_cnt.ts, xreg= bikes[, "mnth"], order=c(1,1,1))
+
+dynamic.reg.model3
+```
+```{r}
+
+cbind("Regression Errors" = residuals(dynamic.reg.model3, type="regression"),
+      "ARIMA errors" = residuals(dynamic.reg.model3, type="innovation")) %>%
+  autoplot(facets=TRUE)
+
+checkresiduals(dynamic.reg.model3)
+```
+```{r}
+# When I attempted auto.arima with the day_cnt ts object, my Rstudio would freeze, so I carried forward with another manual ARIMA instead #
+
+fcast3 <- forecast(dynamic.reg.model3, xreg=bikes[, "mnth"], 14)
+autoplot(fcast3)
+```
+This seems to have performed the worst of my dynamic regression attempts. If I were to continue with dynamic regression, I would likely revisit the structure of my ARMA/ARIMA and then apply the dynamic regression method.
+
+
+
+### *6. Compare the above models and determine a best one for production and distribution. Discuss why you think it performs the best. Why you think your model captures the fit and forecast the best. Any downsides to your forecast model?*
+
+After comparing the RMSE, AICc and CI of each forecast and residual summary, I've decided that I would move forward with making adjustments to my seasonal auto.arima (1,0,2)(0,1,0) with drift. This scored the lowest AICc by far - I was mistaken in my reluctance to explore seasonality further, and was avoidant of seasonality to begin with since there didn't appear to be enough data to suggest seasonality. Looking back, this would make sense to incorporate due to the nature of the subject.Downsides to using the seasonal auto.arima would likely include the fact that it's anticipating a large amount of growth; it is predicting a time range that is 100% the length of time of the dataset. I would probably need to limit my prediction window.
